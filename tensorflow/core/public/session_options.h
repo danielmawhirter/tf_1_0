@@ -58,6 +58,7 @@ struct SessionOptions {
   ConfigProto config;
 
   SessionOptions();
+  string node2parallelism_file_path;
 };
 
 }  // end namespace tensorflow

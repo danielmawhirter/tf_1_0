@@ -13,6 +13,19 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 
 tf_custom_op_library(
+    name = "zero_out.so",
+    srcs = ["zero_out.cc"],
+)
+
+tf_custom_op_library(
+    name = "matmulorg.so",
+    #hdrs = ["matmul_op.h"],
+    srcs = ["matmul_op_org.cc"],
+    #hdrs = ["matmul.h", "../core/kernels/fill_functor.h",],
+    #deps = ["//tensorflow/core/kernels:matmul_op",]
+)
+
+tf_custom_op_library(
     name = "ackermann_op.so",
     srcs = ["ackermann_op.cc"],
 )

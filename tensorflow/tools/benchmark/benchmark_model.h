@@ -16,35 +16,37 @@ limitations under the License.
 #ifndef TENSORFLOW_TOOLS_BENCHMARK_BENCHMARK_MODEL_H_
 #define TENSORFLOW_TOOLS_BENCHMARK_BENCHMARK_MODEL_H_
 
+#include <fstream>
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/util/stat_summarizer.h"
 
 namespace tensorflow {
 namespace benchmark_model {
 
+void getInterIntraNumThreads(int &inter, int &intra);
+
 // Used to help construct dummy inputs for the benchmarking.
 struct InputLayerInfo {
   string name;
   DataType data_type;
   TensorShape shape;
-  std::vector<float> initialization_values;
 };
 
-// Loads a model from disk into a new session.
-Status InitializeSession(int num_threads, const string& graph,
+// Loads a model from disk into a new session, and sets up the stats collection.
+Status InitializeSession(int inter_threads, int intra_threads, const string& graph,
                          std::unique_ptr<Session>* session,
-                         std::unique_ptr<GraphDef>* graph_def);
+                         std::unique_ptr<StatSummarizer>* stats);
 
 // Does a single run of the model that's been loaded into the given session.
 Status RunBenchmark(const std::vector<InputLayerInfo>& inputs,
                     const std::vector<string>& outputs, Session* session,
-                    StatSummarizer* stats, int64* inference_time_us);
+                    StatSummarizer* stats);
 
 // Runs the model multiple time, keeping track of timing information.
 Status TimeMultipleRuns(double sleep_seconds, int num_runs,
                         const std::vector<InputLayerInfo>& inputs,
                         const std::vector<string>& outputs, Session* session,
-                        StatSummarizer* stats, int64* total_time_us);
+                        StatSummarizer* stats);
 
 // Handles all setup and argument parsing.
 int Main(int argc, char** argv);

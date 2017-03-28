@@ -43,6 +43,13 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session.h"
 
+#include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/common_runtime/threadpool_device.h"
+#include <fstream>
+#include <sstream>
+#include <iostream>
+#include <cstdlib>
+
 namespace tensorflow {
 
 class CostModel;
@@ -100,6 +107,64 @@ class DirectSession : public Session {
   void ExportCostModels(CostModelManager::CostModelMap* cost_models) {
     cost_model_manager_.ExportCostModels(cost_models);
   }
+
+  void PopulateNode2DeviceMap() {
+    string path = options_.node2parallelism_file_path;  
+    if(path.empty())
+      path = "./mapping.txt";
+    std::ifstream f(path.c_str());
+    string line;
+    string node_name;
+    int num_threads, old_num_threads, cpu_id;
+    Device *d;
+    string name_prefix = "/job:localhost/replica:0/task:0";
+    string name = strings::StrCat(name_prefix, "/cpu:", 0);
+    if(f.is_open()) {
+      //insert default device
+//       old_num_threads = mutable_options_.config.intra_op_parallelism_threads();
+//       mutable_options_.config.set_intra_op_parallelism_threads(13);
+//       d = new ThreadPoolDevice(
+//           mutable_options_, name, Bytes(256 << 20), DeviceLocality(), cpu_allocator());
+//       mutable_options_.config.set_intra_op_parallelism_threads(old_num_threads);
+//       node2device_map_.emplace(std::make_pair("default", d));
+//       std::cout << "default device is: " << d << std::endl;
+
+//       old_num_threads = mutable_options_.config.intra_op_parallelism_threads();
+//       mutable_options_.config.set_intra_op_parallelism_threads(1);
+//       d = new ThreadPoolDevice(
+//           mutable_options_, name, Bytes(256 << 20), DeviceLocality(), cpu_allocator(), true);
+//       mutable_options_.config.set_intra_op_parallelism_threads(old_num_threads);
+//       node2device_map_.emplace(std::make_pair("async", d));
+
+      while(getline(f,line))
+      {
+//         std::cerr << "Processing one line: " << line << std::endl;
+        std::stringstream ss(line);
+        ss >> node_name;
+        ss >> num_threads;
+
+        old_num_threads = mutable_options_.config.intra_op_parallelism_threads();
+        std::cout << "num_threads = " << num_threads << " for device\n";
+        mutable_options_.config.set_intra_op_parallelism_threads(num_threads);
+//         if(ss>>cpu_id) 
+//           mutable_options_.config.set_cpu_id(cpu_id);
+        d = new ThreadPoolDevice(
+            mutable_options_, name, Bytes(256 << 20), DeviceLocality(), cpu_allocator());
+        //options_.config.intra_op_parallelism_threads->set_value(old_num_threads);
+        mutable_options_.config.set_intra_op_parallelism_threads(old_num_threads);
+        node2device_map_.emplace(std::make_pair(node_name, d));
+        std::cout << "new device is: " << d << std::endl;
+      }
+      f.close();
+    } else {
+      std::cout<< "Can not open node to parallelism file at: " << path << std::endl;
+      exit(1);
+    }
+//     std::cerr << "Quiting populatenode2devicemap\n";
+    std::cout << "From direct_session.h, node2device_map_ = " << &node2device_map_ << std::endl;
+  }
+
+  std::unordered_map<string, Device*>* GetNode2DeviceMap() { return &node2device_map_; }
 
  private:
   typedef DirectSession ME;
@@ -231,6 +296,7 @@ class DirectSession : public Session {
   }
 
   const SessionOptions options_;
+  SessionOptions mutable_options_;
 
   // Device structures.
   const std::unique_ptr<const DeviceMgr> device_mgr_;
@@ -308,6 +374,8 @@ class DirectSession : public Session {
 
   // EXPERIMENTAL: debugger (tfdbg) related
   friend class DebugGateway;
+
+  std::unordered_map<string, Device*> node2device_map_;
 };
 
 }  // end namespace tensorflow

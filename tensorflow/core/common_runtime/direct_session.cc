@@ -74,7 +74,20 @@ int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
   const int32 t = options.config.inter_op_parallelism_threads();
   if (t != 0) return t;
   // Default to using the number of cores available in the process.
-  return port::NumSchedulableCPUs();
+  string path = "./inter.txt";
+  std::ifstream f(path.c_str());
+  string line;
+  int n;
+  if(f.is_open()) {
+    getline(f, line); 
+    std::stringstream ss(line);
+    ss >> n;
+  } else {
+    std::cout<< "Can not open inter op parallelism file at: " << path << std::endl;
+    exit(1);
+  }
+  return n;
+  //return port::NumSchedulableCPUs();
 }
 
 thread::ThreadPool* NewThreadPoolFromSessionOptions(
@@ -227,7 +240,8 @@ DirectSession::DirectSession(const SessionOptions& options,
       device_mgr_(device_mgr),
       factory_(factory),
       cancellation_manager_(new CancellationManager()),
-      operation_timeout_in_ms_(options_.config.operation_timeout_in_ms()) {
+      operation_timeout_in_ms_(options_.config.operation_timeout_in_ms()) ,
+      mutable_options_(options) {
   if (options_.config.session_inter_op_thread_pool_size() > 0) {
     for (int i = 0; i < options_.config.session_inter_op_thread_pool_size();
          ++i) {
@@ -268,6 +282,7 @@ DirectSession::DirectSession(const SessionOptions& options,
     }
     ++devices_added;
   }
+  PopulateNode2DeviceMap();
 }
 
 DirectSession::~DirectSession() {
@@ -369,6 +384,7 @@ Status DirectSession::Run(const RunOptions& run_options,
                           const std::vector<string>& target_nodes,
                           std::vector<Tensor>* outputs,
                           RunMetadata* run_metadata) {
+  std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
   TF_RETURN_IF_ERROR(CheckNotClosed());
   direct_session_runs->GetCell()->IncrementBy(1);
   {
@@ -398,6 +414,7 @@ Status DirectSession::Run(const RunOptions& run_options,
   RunStateArgs run_state_args;
 
   Executor::Args args;
+  args.pnode2device_map = GetNode2DeviceMap();
   args.step_id = step_id_counter_.fetch_add(1);
 
   // EXPERIMENTAL: Options that allow the client to insert nodes into partition
@@ -449,6 +466,8 @@ Status DirectSession::Run(const RunOptions& run_options,
     LogMemory::RecordStep(args.step_id, run_state_args.handle);
   }
   args.sync_on_finish = true;
+
+  args.pnode2device_map = GetNode2DeviceMap();
 
   const bool do_trace = (run_options.trace_level() > RunOptions::NO_TRACE);
 
@@ -566,6 +585,8 @@ Status DirectSession::Run(const RunOptions& run_options,
     }
   }
 
+  std::chrono::steady_clock::time_point end= std::chrono::steady_clock::now();
+  std::cerr << "The direct session execution took " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << " us." << std::endl;
   return Status::OK();
 }
 
@@ -1197,6 +1218,33 @@ Status DirectSession::CreateGraphs(
     device_opts.expect_device_spec = true;
     TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(device_opts, partition.second,
                                               device_graph.get()));
+    std::map<string, Node*> name_to_node;
+    //add nodes
+    for(int i = 0; i < device_graph->num_node_ids(); i++) {
+      auto n = device_graph->FindNodeId(i);
+      name_to_node.insert(std::make_pair(n->def().name(), n));
+    }
+    std::ifstream infile("control.txt");
+    if(infile) {
+      string line, src, dst;
+      std::istringstream iss;
+      while(std::getline(infile, line)) {
+        if(line[0] == '#') continue;
+        iss.clear();
+        iss.str(line);
+        bool ok = (bool)(iss >> src >> dst);
+        ok &= (name_to_node.find(src) != name_to_node.end());
+        ok &= (name_to_node.find(src) != name_to_node.end());
+        if(!ok) {
+          std::cerr << "control.txt line '" << line << "' does not create a valid edge\n";
+          break;
+        }
+        device_graph->AddControlEdge(name_to_node[src], name_to_node[dst]);
+      }
+      infile.close();
+    } else {
+      std::cerr << "control.txt not found\n";
+    }
     outputs->emplace(partition.first, std::move(device_graph));
   }
 

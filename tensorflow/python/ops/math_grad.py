@@ -770,6 +770,28 @@ def _SelectGrad(op, grad):
   return (None, array_ops.where(c, grad, zeros),
           array_ops.where(c, zeros, grad))
 
+@ops.RegisterGradient("MatMulOrg")
+def _MatMulOrgGrad(op, grad):
+  """Gradient for MatMulOrg."""
+
+  t_a = op.get_attr("transpose_a")
+  t_b = op.get_attr("transpose_b")
+  a = math_ops.conj(op.inputs[0])
+  b = math_ops.conj(op.inputs[1])
+  if not t_a and not t_b:
+    grad_a = math_ops.matmulorg(grad, b, transpose_b=True)
+    grad_b = math_ops.matmulorg(a, grad, transpose_a=True)
+  elif not t_a and t_b:
+    grad_a = math_ops.matmulorg(grad, b)
+    grad_b = math_ops.matmulorg(grad, a, transpose_a=True)
+  elif t_a and not t_b:
+    grad_a = math_ops.matmulorg(b, grad, transpose_b=True)
+    grad_b = math_ops.matmulorg(a, grad)
+  elif t_a and t_b:
+    grad_a = math_ops.matmulorg(b, grad, transpose_a=True, transpose_b=True)
+    grad_b = math_ops.matmulorg(grad, a, transpose_a=True, transpose_b=True)
+  return grad_a, grad_b
+
 
 @ops.RegisterGradient("MatMul")
 def _MatMulGrad(op, grad):

@@ -103,6 +103,7 @@ class Executor {
                                  OpKernelContext* ctx)>
         NodeOutputsCallback;
     NodeOutputsCallback node_outputs_cb = nullptr;
+    std::unordered_map<string, Device*>* pnode2device_map = nullptr;
   };
   typedef std::function<void(const Status&)> DoneCallback;
   virtual void RunAsync(const Args& args, DoneCallback done) = 0;
@@ -142,7 +143,7 @@ struct LocalExecutorParams {
 
   Executor::Args::NodeOutputsCallback node_outputs_cb;
 };
-::tensorflow::Status NewLocalExecutor(const LocalExecutorParams& params,
+::tensorflow::Status NewLocalExecutor(LocalExecutorParams& params,
                                       const Graph* graph, Executor** executor);
 
 // A class to help run multiple executors in parallel and wait until

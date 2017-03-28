@@ -337,6 +337,12 @@ class ExecutorImpl : public Executor {
     CHECK(p.delete_kernel != nullptr);
   }
 
+  ExecutorImpl(LocalExecutorParams& p, const Graph* g)
+      : params_(p), graph_(g), gview_() {
+    CHECK(p.create_kernel != nullptr);
+    CHECK(p.delete_kernel != nullptr);
+  }
+
   ~ExecutorImpl() override {
     for (int i = 0; i < graph_->num_node_ids(); i++) {
       NodeItem* item = gview_.node(i);
@@ -787,6 +793,25 @@ class ExecutorState {
   void RunAsync(Executor::DoneCallback done);
 
  private:
+
+  std::unordered_map<string, Device*>* pnode2device_map_ = NULL;
+  unsigned long rnn_time = 0;
+  unsigned long total_time = 0;
+  Device* LookupNodeDevice(string name)
+  {
+    std::cerr << "running node: " << name << std::endl;
+    if(pnode2device_map_->find(name) != pnode2device_map_->end()){
+      std::unordered_map<string, Device*> & m = *pnode2device_map_;
+//       std::cerr << "Found device: " << m[name] << " for node.\n";
+      return m[name];
+    } else {
+      std::unordered_map<string, Device*> & m = *pnode2device_map_;
+//       std::cerr << "Default device: " << m["default"] << " for node.\n";
+      return m["default"];
+//       std::cerr << "Cannot find node name in map!\n";
+//       exit(1);
+    }
+  }
   // Either a tensor pointer (pass-by-reference) or a tensor (pass-by-value).
   // TODO(yuanbyu): A better way to do "has_value"?
   struct Entry {
@@ -1182,7 +1207,7 @@ class ExecutorState {
   // instead of a pointer?  (avoids having to delete).
   checkpoint::TensorSliceReaderCacheWrapper* slice_reader_cache_;
   FunctionCallFrame* call_frame_;
-  const ExecutorImpl* impl_;
+  ExecutorImpl* impl_;
   CancellationManager* cancellation_manager_;
   Executor::Args::Runner runner_;
   bool sync_on_finish_;
@@ -1304,7 +1329,8 @@ ExecutorState::ExecutorState(const Executor::Args& args, ExecutorImpl* impl)
       cancellation_manager_(args.cancellation_manager),
       runner_(args.runner),
       sync_on_finish_(args.sync_on_finish),
-      num_outstanding_ops_(0) {
+      num_outstanding_ops_(0),
+      pnode2device_map_(args.pnode2device_map){
   // We start the entire execution in iteration 0 of the root frame
   // so let us create the root frame and the state for iteration 0.
   // We assume root_frame_->frame_name.empty().
@@ -1593,6 +1619,17 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
       params.frame_iter = FrameAndIter(input_frame->frame_id, input_iter);
       params.is_input_dead = is_input_dead;
       params.output_attr_array = item.output_attrs();
+      if(pnode2device_map_ != NULL) {
+        // constant folding is executing this.
+        Device *d;
+  //       if(item.kernel_is_async)
+  //         d = LookupNodeDevice("async");
+  //       else
+        d = LookupNodeDevice(item.node->name());
+        params.device = d;
+        impl_->params_.device = d;
+        device = d;
+      }
 
       if (item.kernel_is_async) {
         // Asynchronous computes.
@@ -1649,7 +1686,15 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
         // Synchronous computes.
         OpKernelContext ctx(&params, item.num_outputs);
         if (stats) nodestats::SetOpStart(stats);
+        std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
         device->Compute(CHECK_NOTNULL(op_kernel), &ctx);
+        std::chrono::steady_clock::time_point end= std::chrono::steady_clock::now();
+        total_time += std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count();
+        if(item.node->name().find("gru_cell") != std::string::npos) 
+        //if(item.node->name().find("lstm") != std::string::npos) 
+//           rnn_time += std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count();
+//         std::cout << "GRU operations took: " << rnn_time << " us.\n";
+//         std::cout << "All operations took: " << total_time << " us.\n";
         if (stats) nodestats::SetOpEnd(stats);
 
         s = ProcessOutputs(item, &ctx, &outputs, stats);
@@ -2565,7 +2610,7 @@ void ExecutorImpl::RunAsync(const Args& args, DoneCallback done) {
 
 }  // end namespace
 
-Status NewLocalExecutor(const LocalExecutorParams& params, const Graph* graph,
+Status NewLocalExecutor(LocalExecutorParams& params, const Graph* graph,
                         Executor** executor) {
   ExecutorImpl* impl = new ExecutorImpl(params, graph);
   Status s = impl->Initialize();

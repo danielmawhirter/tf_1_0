@@ -32,6 +32,7 @@ import hashlib
 import math
 import numbers
 
+import tensorflow as tf
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -150,18 +151,40 @@ class GRUCell(RNNCell):
 
   def __call__(self, inputs, state, scope=None):
     """Gated recurrent unit (GRU) with nunits cells."""
-    with _checked_scope(self, scope or "gru_cell", reuse=self._reuse):
-      with vs.variable_scope("gates"):  # Reset gate and update gate.
-        # We start with bias of 1.0 to not reset and not update.
-        value = sigmoid(_linear(
-          [inputs, state], 2 * self._num_units, True, 1.0))
-        r, u = array_ops.split(
-            value=value,
-            num_or_size_splits=2,
-            axis=1)
-      with vs.variable_scope("candidate"):
-        c = self._activation(_linear([inputs, r * state],
-                                     self._num_units, True))
+    batch_size = inputs.get_shape()[0].value
+    input_size = inputs.get_shape()[1].value
+    cell_size = self._num_units;
+    with vs.variable_scope(scope or "my_gru_cell") as outer_scope:
+#       with vs.variable_scope("gates"):  # Reset gate and update gate.
+      gates_weights = vs.get_variable(
+          "gates_weights", [input_size+cell_size, cell_size*2], dtype=inputs.dtype)
+
+      ac = math_ops.matmul(inputs,gates_weights[0:input_size,0:cell_size])
+      be = math_ops.matmul(state,gates_weights[input_size:input_size+cell_size,0:cell_size])
+      ad = math_ops.matmul(inputs,gates_weights[0:input_size,cell_size:cell_size*2])        
+      bf = math_ops.matmul(state,gates_weights[input_size:input_size+cell_size,cell_size:cell_size*2])
+      with vs.variable_scope(outer_scope) as inner_scope:
+        inner_scope.set_partitioner(None)
+        gates_biases = vs.get_variable("gates_biases", [2*cell_size], dtype=inputs.dtype, initializer=init_ops.constant_initializer(1.0, dtype=inputs.dtype))
+
+      r = ac + be
+      u = ad + bf
+      r = nn_ops.bias_add(r,gates_biases[0:cell_size])
+      u = nn_ops.bias_add(u,gates_biases[cell_size:2*cell_size])
+      r, u = sigmoid(r), sigmoid(u)
+
+      candidate_weights = vs.get_variable(
+          "candidate_weights", [input_size+cell_size, cell_size], dtype=inputs.dtype)
+      br = r*state
+      ag = math_ops.matmul(inputs,candidate_weights[0:input_size,0:cell_size])
+      brh = math_ops.matmul(br,candidate_weights[input_size:input_size+cell_size,0:cell_size])
+      res = ag + brh
+      with vs.variable_scope(outer_scope) as inner_scope:
+        inner_scope.set_partitioner(None)
+        candidate_biases = vs.get_variable("candidate_biases", [cell_size], dtype=inputs.dtype, initializer=init_ops.constant_initializer(0.0, dtype=inputs.dtype))
+      res = nn_ops.bias_add(res,candidate_biases)
+      c = self._activation(res)
+
       new_h = u * state + (1 - u) * c
     return new_h, new_h
 

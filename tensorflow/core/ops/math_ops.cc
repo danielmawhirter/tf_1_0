@@ -1053,6 +1053,29 @@ transpose_a: If true, "a" is transposed before multiplication.
 transpose_b: If true, "b" is transposed before multiplication.
 )doc");
 
+REGISTER_OP("MatMulOrg")
+    .Input("a: T")
+    .Input("b: T")
+    .Output("product: T")
+    .Attr("transpose_a: bool = false")
+    .Attr("transpose_b: bool = false")
+    .Attr("T: {half, float, double, int32, complex64, complex128}")
+    .SetShapeFn(shape_inference::MatMulShape)
+    .Doc(R"doc(
+Multiply the matrix "a" by the matrix "b".
+
+The inputs must be two-dimensional matrices and the inner dimension of
+"a" (after being transposed if transpose_a is true) must match the
+outer dimension of "b" (after being transposed if transposed_b is
+true).
+
+*Note*: The default kernel implementation for MatMul on GPUs uses
+cublas.
+
+transpose_a: If true, "a" is transposed before multiplication.
+transpose_b: If true, "b" is transposed before multiplication.
+)doc");
+
 REGISTER_OP("SparseMatMul")
     .Input("a: Ta")
     .Input("b: Tb")

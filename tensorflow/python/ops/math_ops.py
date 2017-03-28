@@ -78,6 +78,7 @@ See the @{$python/math_ops} guide.
 @@matrix_set_diag
 @@matrix_transpose
 @@matmul
+@@matmulorg
 @@norm
 @@matrix_determinant
 @@matrix_inverse
@@ -1648,6 +1649,140 @@ def trace(x, name=None):
     x = ops.convert_to_tensor(x, name="x")
     return reduce_sum(array_ops.matrix_diag_part(x), [-1], name=name)
 
+def matmulorg(a,
+           b,
+           transpose_a=False,
+           transpose_b=False,
+           adjoint_a=False,
+           adjoint_b=False,
+           a_is_sparse=False,
+           b_is_sparse=False,
+           name=None):
+  """Multiplies matrix `a` by matrix `b`, producing `a` * `b`.
+
+  The inputs must be matrices (or tensors of rank > 2, representing batches of
+  matrices), with matching inner dimensions, possibly after transposition.
+
+  Both matrices must be of the same type. The supported types are:
+  `float16`, `float32`, `float64`, `int32`, `complex64`, `complex128`.
+
+  Either matrix can be transposed or adjointed (conjugated and transposed) on
+  the fly by setting one of the corresponding flag to `True`. These are `False`
+  by default.
+
+  If one or both of the matrices contain a lot of zeros, a more efficient
+  multiplication algorithm can be used by setting the corresponding
+  `a_is_sparse` or `b_is_sparse` flag to `True`. These are `False` by default.
+  This optimization is only available for plain matrices (rank-2 tensors) with
+  datatypes `bfloat16` or `float32`.
+
+  For example:
+
+  ```python
+  # 2-D tensor `a`
+  a = tf.constant([1, 2, 3, 4, 5, 6], shape=[2, 3]) => [[1. 2. 3.]
+                                                        [4. 5. 6.]]
+  # 2-D tensor `b`
+  b = tf.constant([7, 8, 9, 10, 11, 12], shape=[3, 2]) => [[7. 8.]
+                                                           [9. 10.]
+                                                           [11. 12.]]
+  c = tf.matmul(a, b) => [[58 64]
+                          [139 154]]
+
+
+  # 3-D tensor `a`
+  a = tf.constant(np.arange(1, 13, dtype=np.int32),
+                  shape=[2, 2, 3])                  => [[[ 1.  2.  3.]
+                                                         [ 4.  5.  6.]],
+                                                        [[ 7.  8.  9.]
+                                                         [10. 11. 12.]]]
+
+  # 3-D tensor `b`
+  b = tf.constant(np.arange(13, 25, dtype=np.int32),
+                  shape=[2, 3, 2])                   => [[[13. 14.]
+                                                          [15. 16.]
+                                                          [17. 18.]],
+                                                         [[19. 20.]
+                                                          [21. 22.]
+                                                          [23. 24.]]]
+  c = tf.matmul(a, b) => [[[ 94 100]
+                           [229 244]],
+                          [[508 532]
+                           [697 730]]]
+
+  # Since python >= 3.5 the @ operator is supported (see PEP 465).
+  # In TensorFlow, it simply calls the `tf.matmul()` function, so the
+  # following lines are equivalent:
+  d = a @ b @ [[10.], [11.]]
+  d = tf.matmul(tf.matmul(a, b), [[10.], [11.]])
+  ```
+
+  Args:
+    a: `Tensor` of type `float16`, `float32`, `float64`, `int32`, `complex64`,
+      `complex128` and rank > 1.
+    b: `Tensor` with same type and rank as `a`.
+    transpose_a: If `True`, `a` is transposed before multiplication.
+    transpose_b: If `True`, `b` is transposed before multiplication.
+    adjoint_a: If `True`, `a` is conjugated and transposed before
+      multiplication.
+    adjoint_b: If `True`, `b` is conjugated and transposed before
+      multiplication.
+    a_is_sparse: If `True`, `a` is treated as a sparse matrix.
+    b_is_sparse: If `True`, `b` is treated as a sparse matrix.
+    name: Name for the operation (optional).
+
+  Returns:
+    A `Tensor` of the same type as `a` and `b` where each inner-most matrix is
+    the product of the corresponding matrices in `a` and `b`, e.g. if all
+    transpose or adjoint attributes are `False`:
+
+    `output`[..., i, j] = sum_k (`a`[..., i, k] * `b`[..., k, j]),
+    for all indices i, j.
+
+    Note: This is matrix product, not element-wise product.
+
+
+  Raises:
+    ValueError: If transpose_a and adjoint_a, or transpose_b and adjoint_b
+      are both set to True.
+  """
+  with ops.name_scope(name, "MatMulOrg", [a, b]) as name:
+    if transpose_a and adjoint_a:
+      raise ValueError("Only one of transpose_a and adjoint_a can be True.")
+    if transpose_b and adjoint_b:
+      raise ValueError("Only one of transpose_b and adjoint_b can be True.")
+
+    a = ops.convert_to_tensor(a, name="a")
+    b = ops.convert_to_tensor(b, name="b")
+    a_shape = a.get_shape()
+    b_shape = b.get_shape()
+
+    if adjoint_a:
+      a = conj(a)
+      transpose_a = True
+    if adjoint_b:
+      b = conj(b)
+      transpose_b = True
+
+    sparse_matmul_types = [dtypes.bfloat16, dtypes.float32]
+    use_sparse_matmul = (a.dtype in sparse_matmul_types and
+                         b.dtype in sparse_matmul_types and
+                         (a_is_sparse or b_is_sparse))
+    if dtypes.bfloat16 in (a.dtype, b.dtype):
+      # matmul currently doesn't handle bfloat16 inputs.
+      use_sparse_matmul = True
+    if use_sparse_matmul:
+      return sparse_matmul(
+          a,
+          b,
+          transpose_a=transpose_a,
+          transpose_b=transpose_b,
+          a_is_sparse=a_is_sparse,
+          b_is_sparse=b_is_sparse,
+          name=name)
+    else:
+      return gen_math_ops.mat_mul_org(
+          a, b, transpose_a=transpose_a, transpose_b=transpose_b, name=name)
 
 def matmul(a,
            b,

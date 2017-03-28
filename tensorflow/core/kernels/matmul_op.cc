@@ -17,6 +17,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include "third_party/mkl/include/mkl.h"
 #include "tensorflow/core/kernels/matmul_op.h"
 
 #include "tensorflow/core/framework/op.h"
@@ -302,7 +303,29 @@ class MatMulOp : public OpKernel {
       return;
     }
 
-    LaunchMatMul<Device, T, USE_CUBLAS>::launch(ctx, this, a, b, dim_pair, out);
+//     std::cerr << "before setting threads...\n";
+
+    int num_threads = ctx->eigen_cpu_device().numThreads();
+    mkl_set_num_threads_local(num_threads);
+    //setNbThreads(num_threads);
+    // std::cerr << "Using " << num_threads << " threads for MatMul...\n";
+    float *aa = (float*)a.tensor_data().data();
+    float *bb = (float*)b.tensor_data().data();
+    float *cc = (float*)out->tensor_data().data();
+
+    uint64 m,n,k;
+    m = a.shape().dim_size(0);
+    k = a.shape().dim_size(1);
+    n = b.shape().dim_size(1);
+    
+//     std::cerr << "m= " << m << ", n= " << n << ", k = " << k << std::endl;
+//     std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
+    cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
+                          m, n, k, 1., aa, k, bb, n, 0.0, cc, n);
+//     std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+//     std::cerr << "The MatMul execution took " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << " us." << std::endl;
+
+//     LaunchMatMul<Device, T, USE_CUBLAS>::launch(ctx, this, a, b, dim_pair, out);
   }
 
  private:

@@ -168,6 +168,19 @@ tf_py_test(
 )
 
 cuda_py_tests(
+    name = "my_gru_test",
+    size = "small",
+    srcs = ["python/kernel_tests/my_gru_ops_test.py"],
+    additional_deps = [
+        ":rnn_py",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:variable_scope",
+    ],
+)
+
+cuda_py_tests(
     name = "lstm_ops_test",
     size = "medium",
     srcs = ["python/kernel_tests/lstm_ops_test.py"],

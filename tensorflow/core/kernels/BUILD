@@ -2105,6 +2105,7 @@ cc_library(
         ":cwise_op",
         ":fft_ops",
         ":matmul_op",
+        ":matmul_org_op",
         ":reduction_ops",
         ":scan_ops",
         ":segment_reduction_ops",
@@ -2169,6 +2170,24 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "matmul_org_op",
+    defines = select({
+        ":xsmm": [
+            "TENSORFLOW_USE_LIBXSMM",
+            "EIGEN_USE_LIBXSMM",
+        ],
+        "//conditions:default": [],
+    }),
+    prefix = "matmul_org_op",
+    deps = MATH_DEPS + select({
+        ":xsmm": [
+            "@libxsmm_archive//:xsmm_avx",
+        ],
+        "//conditions:default": [],
+    }) 
+)
+
+tf_kernel_library(
     name = "matmul_op",
     defines = select({
         ":xsmm": [
@@ -2183,7 +2202,8 @@ tf_kernel_library(
             "@libxsmm_archive//:xsmm_avx",
         ],
         "//conditions:default": [],
-    }),
+    }) +["//third_party:mkl"],
+    linkopts = ["-Wl,--start-group /opt/intel/compilers_and_libraries_2017.0.098/linux/mkl/lib/intel64/libmkl_intel_lp64.a /opt/intel/compilers_and_libraries_2017.0.098/linux/mkl/lib/intel64/libmkl_gnu_thread.a /opt/intel/compilers_and_libraries_2017.0.098/linux/mkl/lib/intel64/libmkl_core.a -Wl,--end-group -lgomp -lpthread -lm -ldl"]
 )
 
 tf_kernel_library(
@@ -2296,6 +2316,7 @@ tf_cuda_cc_test(
     srcs = ["matmul_op_test.cc"],
     deps = [
         ":matmul_op",
+        ":matmul_org_op",
         ":ops_testutil",
         ":ops_util",
         ":quantized_ops",
@@ -2378,6 +2399,7 @@ tf_cc_test(
         ":array",
         ":immutable_constant_op",
         ":matmul_op",
+        ":matmul_org_op",
         ":ops_testutil",
         ":ops_util",
         ":random_shuffle_op",
@@ -3542,6 +3564,7 @@ filegroup(
         "immutable_constant_op.h",
         "matmul_op.cc",
         "matmul_op.h",
+        "matmul_op_org.cc",
         "no_op.cc",
         "no_op.h",
         "non_max_suppression_op.cc",
