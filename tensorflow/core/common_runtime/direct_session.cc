@@ -1239,6 +1239,7 @@ Status DirectSession::CreateGraphs(
           std::cerr << "control.txt line '" << line << "' does not create a valid edge\n";
           break;
         }
+        std::cerr << "Adding an edge for line '" << line << std::endl;
         device_graph->AddControlEdge(name_to_node[src], name_to_node[dst]);
       }
       infile.close();

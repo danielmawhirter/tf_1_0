@@ -308,7 +308,7 @@ class MatMulOp : public OpKernel {
     int num_threads = ctx->eigen_cpu_device().numThreads();
     mkl_set_num_threads_local(num_threads);
     //setNbThreads(num_threads);
-    // std::cerr << "Using " << num_threads << " threads for MatMul...\n";
+//     std::cerr << "Using " << num_threads << " threads for MatMul...\n";
     float *aa = (float*)a.tensor_data().data();
     float *bb = (float*)b.tensor_data().data();
     float *cc = (float*)out->tensor_data().data();

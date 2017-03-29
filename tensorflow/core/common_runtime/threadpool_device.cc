@@ -41,7 +41,8 @@ ThreadPoolDevice::ThreadPoolDevice(const SessionOptions& options,
     : LocalDevice(options, Device::BuildDeviceAttributes(
                                name, DEVICE_CPU, memory_limit, locality),
                   allocator),
-      allocator_(allocator) {}
+      allocator_(allocator) {
+      }
 
 ThreadPoolDevice::~ThreadPoolDevice() {}
 

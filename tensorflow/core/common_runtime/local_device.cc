@@ -28,7 +28,7 @@ limitations under the License.
 namespace tensorflow {
 
 /* static */
-bool LocalDevice::use_global_threadpool_ = true;
+bool LocalDevice::use_global_threadpool_ = false;
 
 struct LocalDevice::EigenThreadPoolInfo {
   EigenThreadPoolInfo(const SessionOptions& options) {

@@ -799,10 +799,10 @@ class ExecutorState {
   unsigned long total_time = 0;
   Device* LookupNodeDevice(string name)
   {
-    std::cerr << "running node: " << name << std::endl;
+//     std::cerr << "running node: " << name << std::endl;
     if(pnode2device_map_->find(name) != pnode2device_map_->end()){
       std::unordered_map<string, Device*> & m = *pnode2device_map_;
-//       std::cerr << "Found device: " << m[name] << " for node.\n";
+//       std::cerr << "Found device: " << m[name] << " for node: " << name << ".\n";
       return m[name];
     } else {
       std::unordered_map<string, Device*> & m = *pnode2device_map_;
@@ -1687,6 +1687,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
         OpKernelContext ctx(&params, item.num_outputs);
         if (stats) nodestats::SetOpStart(stats);
         std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
+//         std::cerr << "ctx's device num_threads = " << ctx.eigen_cpu_device().numthreads();
         device->Compute(CHECK_NOTNULL(op_kernel), &ctx);
         std::chrono::steady_clock::time_point end= std::chrono::steady_clock::now();
         total_time += std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count();
